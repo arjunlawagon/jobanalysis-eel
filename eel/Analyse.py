@@ -1,8 +1,9 @@
 import re
 from datetime import datetime
 import eel
+import time
 
-eel.init('mountain')
+eel.init('web')
 
 
 class job:
@@ -70,6 +71,7 @@ class job:
 bau = job()
 prj = job()
 
+error = ""
 
 def findstarttime(x, l):
     pos = l.find("STARTED")
@@ -85,11 +87,13 @@ def findendtime(x, l):
 
 
 def findstep(x, l):
-    pos = re.search("-P...     S...", l)
-    if pos:
-        x.addstep(l[30:36])
-        x.addexcp(int(l[49:51].strip()))
+    pos =  re.search("-P...     S...", l)
+    pos2 = re.search("-P....... S...", l)
+    pos3 = re.search("-P...     S.......", l)
+    if pos or pos2 or pos3:
         print(l)
+        x.addstep(l[30:38].strip())
+        x.addexcp(int(l[49:51].strip()))
 
 
 def findprog(x, l):
@@ -97,71 +101,145 @@ def findprog(x, l):
     if pos:
         x.addprog(l[21:30])
         x.addcpu(float(l[73:78].strip()))
-        print(l)
+
+
+def calculateElapseTime(jobversion):
+    time_arr = [''] * (len(jobversion.steps) + 1)
+    time_arr[0] = jobversion.start.replace(".", ":").strip()
+    time_arr[-2] = jobversion.end.replace(".", ":").strip()
+
+    FMT = '%H:%M:%S'
+    elapse = abs(datetime.strptime(time_arr[-2], FMT) - datetime.strptime(time_arr[0], FMT)).seconds
+    print(elapse)
+    if elapse == 0:
+        time_arr[-1] = "< 1sec"
+    else:
+        time_arr[-1] = str(convert(elapse))
+
+    return time_arr
+
+
+def convert(seconds):
+    seconds = seconds % (24 * 3600)
+    hour = seconds // 3600
+    seconds %= 3600
+    minutes = seconds // 60
+    seconds %= 60
+    timestr = ""
+    if hour > 0:
+        timestr = timestr + str(hour) + "hr "
+    if minutes > 0:
+        timestr = timestr + str(minutes) + "min "
+    if seconds > 0:
+        timestr = timestr + str(seconds) + "sec"
+
+    return timestr
+
+
+def addTableSummary(jobversion):
+    """ADD 1 ROW AT END OF STEPS FOR SUMMARY"""
+    jobversion.steps.append("SUMMARY")
+    jobversion.prog.append("")
+    jobversion.cpu.append(max(jobversion.cpu))
+    jobversion.excp.append(max(jobversion.excp))
 
 
 @eel.expose
 def mainprocess(baujob, prjjob):
     bau.initialize()
     prj.initialize()
-    print("running python from eel")
+    print("Analysing string tokens...")
     if baujob == "":
-        return "-1"
+        print("bau iput is empty")
+        return '-1'
 
     if prjjob == "":
-        return "-1"
+        print("prj input is empty")
+        return '-1'
 
+    print("bau")
     for line in baujob:
         findstarttime(bau, line)
         findendtime(bau, line)
         findstep(bau, line)
         findprog(bau, line)
 
+    print("prj")
     for line in prjjob:
         findstarttime(prj, line)
         findendtime(prj, line)
         findstep(prj, line)
         findprog(prj, line)
 
-    return "00"
+    if len(bau.getStep()) == 0:
+        return "-2"
+
+    if len(prj.getStep()) == 0:
+        return "-3"
+
+    bau.setExecTime(calculateElapseTime(bau))
+    prj.setExecTime(calculateElapseTime(prj))
+    addTableSummary(bau)
+    addTableSummary(prj)
+    time.sleep(2)
+    print("Analysis completed.")
+    return '00'
+
 
 @eel.expose
-def dummy(dummy_param):
-    print("I got a parameter: ", dummy_param)
-    return "string_value", 1, 1.2, True, [1, 2, 3, 4], {"name": "eel"}
-
-
-@eel.expose
-def getStep(job):
-    print("getStep input: " + str(job))
+def getSteps(job):
     if job == "bau":
-        print(bau.getStep())
         return bau.getStep()
     else:
         return prj.getStep()
 
-@eel.expose
-def getExcp(job):
-    return job.getExcp()
 
 @eel.expose
-def getProg(job):
-    return job.getProg()
+def getExcps(job):
+    if job == "bau":
+        return bau.getExcp()
+    else:
+        return prj.getExcp()
+
 
 @eel.expose
-def getCpu(job):
-    return job.getCpu()
+def getProgs(job):
+    if job == "bau":
+        return bau.getProg()
+    else:
+        return prj.getProg()
+
 
 @eel.expose
-def getExecTime(job):
-    return job.getExecTime()
+def getCpus(job):
+    if job == "bau":
+        return bau.getCpu()
+    else:
+        return prj.getCpu()
+
+
+@eel.expose
+def getExecTimes(job):
+    if job == "bau":
+        return bau.getExecTime()
+    else:
+        return prj.getExecTime()
+
 
 @eel.expose
 def getStart(job):
-    return job.getStart()
+    if job == "bau":
+        return bau.getStart()
+    else:
+        prj.getStart()
+
 
 @eel.expose
 def getEnd(job):
-    return job.getEnd()
+    if job == "bau":
+        return bau.getEnd()
+    else:
+        return prj.getEnd()
 
-eel.start('index.html', size=(900, 700))
+
+eel.start('index.html', size=(780, 680))
